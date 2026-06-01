@@ -1,125 +1,49 @@
 <!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Kran 3D</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:#fff;overflow:hidden;font-family:system-ui,sans-serif}
-#ui{position:fixed;top:12px;left:12px;background:rgba(255,255,255,.92);border:1px solid #ccc;border-radius:8px;padding:10px 14px;font-size:13px;line-height:2;display:none}
-button{background:#2a6dd9;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px}
-#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;z-index:10}
-.sp{width:40px;height:40px;border:4px solid #eee;border-top-color:#2a6dd9;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}
-@keyframes spin{to{transform:rotate(360deg)}}
-</style>
-</head>
-<body>
+<html><head><meta charset="UTF-8"><title>Kran 3D</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;overflow:hidden;font-family:system-ui,sans-serif}#ui{position:fixed;top:12px;left:12px;background:rgba(255,255,255,.92);border:1px solid #ccc;border-radius:8px;padding:10px 14px;font-size:13px;line-height:2;display:none}button{background:#2a6dd9;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px}#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;z-index:10}.sp{width:40px;height:40px;border:4px solid #eee;border-top-color:#2a6dd9;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}@keyframes spin{to{transform:rotate(360deg)}}</style>
+</head><body>
 <div id="loading"><div class="sp"></div><span id="msg">Lade...</span></div>
-<div id="ui">
-  Linke Maus: Drehen &nbsp;|&nbsp; Rechte Maus: Schieben &nbsp;|&nbsp; Rad: Zoom<br>
-  <button onclick="resetCam()">Reset Kamera</button>
-</div>
+<div id="ui">Linke Maus: Drehen &nbsp;|&nbsp; Rechte Maus: Schieben &nbsp;|&nbsp; Rad: Zoom<br><button onclick="resetCam()">Reset</button></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
-var BASE = 'https://raw.githubusercontent.com/JuFreyNIB/Crane/main/';
-
-var scene = new THREE.Scene();
-scene.background = new THREE.Color(0xffffff);
-
-var camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1e9);
-camera.position.set(500, 300, 600);
-
-var renderer = new THREE.WebGLRenderer({antialias: true});
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(devicePixelRatio);
+var scene=new THREE.Scene(); scene.background=new THREE.Color(0xf5f5f5);
+var camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.1,1e9);
+var renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(devicePixelRatio);
+renderer.shadowMap.enabled=true;
 document.body.appendChild(renderer.domElement);
-
-scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-var sun = new THREE.DirectionalLight(0xffffff, 1.0);
-sun.position.set(1, 2, 1.5);
-scene.add(sun);
-var fill = new THREE.DirectionalLight(0xaabbcc, 0.4);
-fill.position.set(-1, 0.5, -1);
-scene.add(fill);
-
-var controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-
-var savedPos = null;
-var savedTarget = null;
-function resetCam() {
-  if (savedPos) {
-    camera.position.copy(savedPos);
-    controls.target.copy(savedTarget);
+scene.add(new THREE.AmbientLight(0xffffff,0.8));
+var sun=new THREE.DirectionalLight(0xffffff,1.2); sun.position.set(1,2,1.5); scene.add(sun);
+var fill=new THREE.DirectionalLight(0xaabbcc,0.4); fill.position.set(-1,0.5,-1); scene.add(fill);
+var controls=new THREE.OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.dampingFactor=0.08;
+var savedPos,savedTarget;
+function resetCam(){if(savedPos){camera.position.copy(savedPos);controls.target.copy(savedTarget);controls.update();}}
+new THREE.GLTFLoader().load(
+  'https://raw.githubusercontent.com/JuFreyNIB/Crane/main/kran_small.glb',
+  function(gltf){
+    var obj=gltf.scene;
+    obj.traverse(function(c){if(c.isMesh){c.castShadow=true;c.receiveShadow=true;}});
+    scene.add(obj);
+    var box=new THREE.Box3().setFromObject(obj);
+    var center=box.getCenter(new THREE.Vector3());
+    var size=box.getSize(new THREE.Vector3());
+    var mx=Math.max(size.x,size.y,size.z);
+    controls.target.copy(center);
+    camera.position.set(center.x+mx*0.8,center.y+mx*0.5,center.z+mx);
+    camera.near=mx*0.0001; camera.far=mx*50; camera.updateProjectionMatrix();
     controls.update();
-  }
-}
-
-function fixMat(mat) {
-  mat.side = THREE.DoubleSide;
-  if (mat.color) {
-    var s = mat.color.r + mat.color.g + mat.color.b;
-    var isGray = Math.abs(mat.color.r - mat.color.g) < 0.1 && Math.abs(mat.color.g - mat.color.b) < 0.1;
-    if (s < 0.3) { mat.color.set(0x444444); }
-    else if (isGray && s < 2.0) { mat.color.set(0x555555); }
-    else if (s > 2.4) { mat.color.set(0x999999); }
-  }
-}
-
-document.getElementById('msg').textContent = 'Lade Materialien...';
-
-var mtlLoader = new THREE.MTLLoader();
-mtlLoader.setPath(BASE);
-mtlLoader.load('uploads_files_2747349_kran.mtl',
-  function(mtl) {
-    mtl.preload();
-    Object.values(mtl.materials).forEach(fixMat);
-
-    document.getElementById('msg').textContent = 'Lade Modell...';
-    var objLoader = new THREE.OBJLoader();
-    objLoader.setMaterials(mtl);
-    objLoader.setPath(BASE);
-    objLoader.load('uploads_files_2747349_kran.obj',
-      function(obj) {
-        obj.traverse(function(child) {
-          if (child.isMesh) {
-            var m = Array.isArray(child.material) ? child.material : [child.material];
-            m.forEach(fixMat);
-          }
-        });
-        scene.add(obj);
-        var box = new THREE.Box3().setFromObject(obj);
-        var center = box.getCenter(new THREE.Vector3());
-        var size = box.getSize(new THREE.Vector3());
-        var maxDim = Math.max(size.x, size.y, size.z);
-        controls.target.copy(center);
-        camera.position.set(center.x + maxDim * 0.8, center.y + maxDim * 0.5, center.z + maxDim * 1.0);
-        camera.near = maxDim * 0.0001;
-        camera.far = maxDim * 50;
-        camera.updateProjectionMatrix();
-        controls.update();
-        savedPos = camera.position.clone();
-        savedTarget = controls.target.clone();
-        var grid = new THREE.GridHelper(maxDim * 2, 20, 0xcccccc, 0xe8e8e8);
-        grid.position.set(center.x, box.min.y, center.z);
-        scene.add(grid);
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('ui').style.display = 'block';
-      },
-      function(xhr) { if(xhr.total) document.getElementById('msg').textContent = 'Lade Modell... ' + Math.round(xhr.loaded/xhr.total*100) + '%'; },
-      function(err) { document.getElementById('msg').textContent = 'Fehler OBJ: ' + err; }
-    );
+    savedPos=camera.position.clone(); savedTarget=controls.target.clone();
+    var grid=new THREE.GridHelper(mx*2,20,0xbbbbbb,0xdddddd);
+    grid.position.set(center.x,box.min.y,center.z); scene.add(grid);
+    document.getElementById('loading').style.display='none';
+    document.getElementById('ui').style.display='block';
   },
-  undefined,
-  function(err) { document.getElementById('msg').textContent = 'Fehler MTL: ' + err; }
+  function(xhr){if(xhr.total)document.getElementById('msg').textContent='Lade... '+Math.round(xhr.loaded/xhr.total*100)+'%';},
+  function(e){document.getElementById('msg').textContent='Fehler: '+e;}
 );
-
-(function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); })();
-window.addEventListener('resize', function() { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-</script>
-</body>
-</html>
+(function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);})();
+window.addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script></body></html>
