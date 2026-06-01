@@ -27,7 +27,6 @@ Linke Maus: Drehen &nbsp; Rechte Maus: Schieben &nbsp; Rad: Zoom<br>
 <script>
 const BASE = 'https://raw.githubusercontent.com/JuFreyNIB/Crane/main/';
 
-// Scene
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
 
@@ -37,11 +36,9 @@ camera.position.set(500, 300, 600);
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(devicePixelRatio);
-renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-// Lights
-scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 const sun = new THREE.DirectionalLight(0xffffff, 1.0);
 sun.position.set(1, 2, 1.5);
 scene.add(sun);
@@ -49,7 +46,6 @@ const fill = new THREE.DirectionalLight(0xaabbcc, 0.4);
 fill.position.set(-1, 0.5, -1);
 scene.add(fill);
 
-// Controls
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -59,54 +55,49 @@ function resetCam(){
   if(savedPos){ camera.position.copy(savedPos); controls.target.copy(savedTarget); controls.update(); }
 }
 
-// Load MTL then OBJ
+function fixMat(mat){
+  mat.side = THREE.DoubleSide;
+  const c = mat.color;
+  if(c){
+    const s = c.r+c.g+c.b;
+    const isGray = Math.abs(c.r-c.g)<0.08 && Math.abs(c.g-c.b)<0.08;
+    if(s < 0.3) mat.color.set(0x444444);
+    else if(isGray && s< 2.0) mat.color.set(0x555555);
+    else if(s > 2.4) mat.color.set(0x999999);
+  }
+}
+
 document.getElementById('msg').textContent = 'Lade Materialien...';
 const mtlLoader = new THREE.MTLLoader();
 mtlLoader.setPath(BASE);
 mtlLoader.load('uploads_files_2747349_kran.mtl', mtl => {
   mtl.preload();
-  // Fix dark/invisible materials
-  Object.values(mtl.materials).forEach(mat => {
-    mat.side = THREE.DoubleSide;
-    const c = mat.color;
-    if(c && c.r+c.g+c.b < 0.3) mat.color.set(0x555555);
-    if(c && c.r+c.g+c.b > 2.4) mat.color.set(0xaaaaaa);
-  });
+  Object.values(mtl.materials).forEach(fixMat);
 
-  document.getElementById('msg').textContent = 'Lade Modell (2MB)...';
+  document.getElementById('msg').textContent = 'Lade Modell...';
   const objLoader = new THREE.OBJLoader();
   objLoader.setMaterials(mtl);
   objLoader.setPath(BASE);
   objLoader.load('uploads_files_2747349_kran.obj', obj => {
-    // Ensure double-sided and fix dark materials on loaded meshes
     obj.traverse(child => {
       if(child.isMesh){
-        child.castShadow = true;
-        const m = child.material;
-        const mats = Array.isArray(m) ? m : [m];
-        mats.forEach(mat => {
-          mat.side = THREE.DoubleSide;
-          if(mat.color){
-            const s = mat.color.r+mat.color.g+mat.color.b;
-            if(s < 0.3) mat.color.set(0x555555);
-          }
-        });
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach(fixMat);
       }
     });
 
     scene.add(obj);
 
-    // Auto-fit camera
     const box = new THREE.Box3().setFromObject(obj);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
 
-    controls.target.copy(center);
+    controls.target.copycenter);
     camera.position.set(
-      center.x + maxDim,
-      center.y + maxDim * 0.6,
-      center.z + maxDim * 1.2
+      center.x + maxDim * 0.8,
+      center.y + maxDim * 0.5,
+      center.z + maxDim * 1.0
     );
     camera.near = maxDim * 0.0001;
     camera.far = maxDim * 50;
@@ -116,7 +107,6 @@ mtlLoader.load('uploads_files_2747349_kran.mtl', mtl => {
     savedPos = camera.position.clone();
     savedTarget = controls.target.clone();
 
-    // Grid
     const grid = new THREE.GridHelper(maxDim*2, 20, 0xcccccc, 0xe8e8e8);
     grid.position.set(center.x, box.min.y, center.z);
     scene.add(grid);
@@ -124,13 +114,14 @@ mtlLoader.load('uploads_files_2747349_kran.mtl', mtl => {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('ui').style.display = 'block';
   },
-  xhr => { document.getElementById('msg').textContent = 'Lade Modell... ' + Math.round(xhr.loaded/xhr.total*100) + '%'; },
+  xhr => {
+    if(xhr.total) document.getElementById('msg').textContent = 'Lade... ' + Math.round(xhr.loaded/xhr.total*100) + '%';
+  },
   err => { document.getElementById('msg').textContent = 'Fehler: ' + err; });
 },
 undefined,
 err => { document.getElementById('msg').textContent = 'MTL Fehler: ' + err; });
 
-// Render loop
 (function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene,camera); })();
 window.addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 </script>
