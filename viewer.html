@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kran 3D</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#ffffff;color:#222;font-family:system-ui,sans-serif;overflow:hidden}
+canvas{display:block}
+#ui{position:fixed;top:12px;left:12px;background:rgba(240,240,240,.9);border-radius:8px;padding:10px 14px;font-size:13px;line-height:1.9;backdrop-filter:blur(6px)}
+#ui h3{color:#7ec8e3;margin-bottom:4px}
+button{background:#7ec8e3;color:#111;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:12px;margin-top:4px}
+#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#ffffff;z-index:10}
+.sp{width:44px;height:44px;border:4px solid #ccc;border-top-color:#7ec8e3;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ctrl{position:fixed;bottom:12px;right:12px;background:rgba(240,240,240,.9);border-radius:8px;padding:8px 12px;font-size:12px;color:#555;backdrop-filter:blur(6px)}
+</style>
+</head>
+<body>
+<div id="loading"><div class="sp"></div><span id="msg">Lade Modell...</span></div>
+<canvas id="c"></canvas>
+<div id="ui" style="display:none">
+<h3>Kran 3D</h3>
+Linke Maus: Drehen<br>Rechte Maus: Verschieben<br>Scrollrad: Zoom<br>
+<button onclick="resetCam()">Reset</button>
+</div>
+<div id="ctrl" style="display:none"><label><input type="checkbox" id="wf" onchange="scene.traverse(o=>{if(o.isMesh)o.material.wireframe=this.checked})"> Wireframe</label></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const RAW="https://raw.githubusercontent.com/JuFreyNIB/Crane/main/";
+const OBJ_FILE="uploads_files_2747349_kran.obj";
+const MTL_FILE="uploads_files_2747349_kran.mtl";
+
+const canvas=document.getElementById("c");
+canvas.width=innerWidth; canvas.height=innerHeight;
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0xffffff);
+const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.1,1e8);
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(devicePixelRatio);
+scene.add(new THREE.AmbientLight(0xffffff,1.0));
+const dl=new THREE.DirectionalLight(0xffffff,1.2); dl.position.set(1,2,1.5).normalize(); scene.add(dl);
+const dl2=new THREE.DirectionalLight(0x8899cc,0.6); dl2.position.set(-1,0.5,-1).normalize(); scene.add(dl2);
+
+// Simple orbit controls
+let isDragging=false,btn=-1,lastX=0,lastY=0;
+let theta=0.7,phi=1.0,radius=1000,tx=0,ty=0;
+canvas.addEventListener("mousedown",e=>{isDragging=true;btn=e.button;lastX=e.clientX;lastY=e.clientY;e.preventDefault()});
+canvas.addEventListener("mouseup",()=>{isDragging=false});
+canvas.addEventListener("contextmenu",e=>e.preventDefault());
+canvas.addEventListener("mousemove",e=>{
+  if(!isDragging) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  if(btn===0){theta-=dx*0.005; phi=Math.max(0.05,Math.min(Math.PI-0.05,phi-dy*0.005));}
+  else if(btn===2){const s=radius*0.001; tx-=dx*s; ty+=dy*s;}
+});
+canvas.addEventListener("wheel",e=>{radius*=e.deltaY>0?1.12:0.89;e.preventDefault()},{passive:false});
+
+function updateCamera(){
+  const x=radius*Math.sin(phi)*Math.sin(theta)+tx;
+  const y=radius*Math.cos(phi)+ty;
+  const z=radius*Math.sin(phi)*Math.cos(theta);
+  camera.position.set(x,y,z);
+  camera.lookAt(tx,ty,0);
+}
+let defTheta=0.7,defPhi=1.0,defRadius=1000,defTx=0,defTy=0;
+function resetCam(){theta=defTheta;phi=defPhi;radius=defRadius;tx=defTx;ty=defTy;}
+
+(function animate(){requestAnimationFrame(animate);updateCamera();renderer.render(scene,camera)})();
+
+// MTL parser
+function parseMTL(text){
+  const mats={};let cur=null;
+  for(const line of text.split("\n")){
+    const p=line.trim().split(/\s+/);
+    if(p[0]==="newmtl"){cur=p[1];mats[cur]={color:new THREE.Color(0.6,0.6,0.6)};}
+    else if(cur&&p[0]==="Kd"){
+      const c=new THREE.Color(+p[1],+p[2],+p[3]);
+      // Boost near-black materials for visibility
+      mats[cur].color=(c.r+c.g+c.b<0.2)?new THREE.Color(0.55,0.55,0.55):c;
+    }
+  }
+  return mats;
+}
+
+// OBJ parser
+function parseOBJ(text,matDefs){
+  const pos=[],nrm=[],groups={};let cm="default";
+  for(const line of text.split("\n")){
+    const p=line.trim().split(/\s+/);
+    if(p[0]==="v") pos.push(+p[1],+p[2],+p[3]);
+    else if(p[0]==="vn") nrm.push(+p[1],+p[2],+p[3]);
+    else if(p[0]==="usemtl"){cm=p[1];if(!groups[cm])groups[cm]=[];}
+    else if(p[0]==="f"){
+      if(!groups[cm])groups[cm]=[];
+      const verts=p.slice(1).map(s=>{const[a,,b]=s.split("/");return{v:+a-1,n:b?+b-1:-1}});
+      for(let i=1;i<verts.length-1;i++) groups[cm].push(verts[0],verts[i],verts[i+1]);
+    }
+  }
+  const group=new THREE.Group();
+  for(const[name,faces] of Object.entries(groups)){
+    if(!faces.length) continue;
+    const pa=[],na=[];
+    for(const{v,n} of faces){
+      pa.push(pos[v*3],pos[v*3+1],pos[v*3+2]);
+      if(n>=0) na.push(nrm[n*3],nrm[n*3+1],nrm[n*3+2]);
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute("position",new THREE.Float32BufferAttribute(pa,3));
+    if(na.length) geo.setAttribute("normal",new THREE.Float32BufferAttribute(na,3));
+    else geo.computeVertexNormals();
+    const md=matDefs[name]||{color:new THREE.Color(0.6,0.6,0.6)};
+    group.add(new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:md.color,shininess:30})));
+  }
+  return group;
+}
+
+async function load(){
+  document.getElementById("msg").textContent="Lade Materialien...";
+  const [mR,oR]=await Promise.all([fetch(RAW+MTL_FILE),fetch(RAW+OBJ_FILE)]);
+  document.getElementById("msg").textContent="Parse OBJ (2MB)...";
+  const [mtl,obj]=await Promise.all([mR.text(),oR.text()]);
+  document.getElementById("msg").textContent="Rendere...";
+  const matDefs=parseMTL(mtl);
+  const model=parseOBJ(obj,matDefs);
+  scene.add(model);
+  const box=new THREE.Box3().setFromObject(model);
+  const ctr=box.getCenter(new THREE.Vector3());
+  const sz=box.getSize(new THREE.Vector3());
+  const mx=Math.max(sz.x,sz.y,sz.z);
+  model.position.sub(ctr);
+  radius=mx*1.4; tx=0; ty=0;
+  camera.near=mx*0.0001; camera.far=mx*100; camera.updateProjectionMatrix();
+  defRadius=radius;
+  scene.add(new THREE.GridHelper(mx*0.5,20,0x333355,0x222244));
+  document.getElementById("loading").style.display="none";
+  document.getElementById("ui").style.display="block";
+  document.getElementById("ctrl").style.display="block";
+}
+
+window.addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);canvas.width=innerWidth;canvas.height=innerHeight;});
+load().catch(e=>{document.getElementById("msg").textContent="Fehler: "+e.message;});
+</script>
+</body>
+</html>
